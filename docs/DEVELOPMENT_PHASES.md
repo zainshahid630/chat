@@ -31,11 +31,11 @@ This document tracks the development progress across all phases. Each phase buil
 - [x] Initialize Git repository
 
 #### 1.2 Supabase Setup
-- [ ] Create Supabase project (⏳ Waiting for user)
+- [x] Create Supabase project
 - [x] Configure local Supabase CLI
-- [ ] Set up environment variables (⏳ Waiting for credentials)
+- [x] Set up environment variables
 - [x] Initialize Supabase client in shared package
-- [ ] Configure Supabase Storage buckets
+- [x] Configure Supabase Storage buckets
 
 #### 1.3 Database Schema
 - [ ] Create organizations table
