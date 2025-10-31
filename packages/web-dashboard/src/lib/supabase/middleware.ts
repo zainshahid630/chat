@@ -54,8 +54,24 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh session if expired
-  await supabase.auth.getUser();
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/login', '/signup', '/auth/callback', '/forgot-password'];
+  const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route));
+
+  // Redirect to login if accessing protected route without authentication
+  if (!user && !isPublicRoute && request.nextUrl.pathname !== '/') {
+    const redirectUrl = new URL('/login', request.url);
+    redirectUrl.searchParams.set('next', request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Redirect to dashboard if accessing auth pages while authenticated
+  if (user && isPublicRoute && request.nextUrl.pathname !== '/auth/callback') {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
 
   return response;
 }

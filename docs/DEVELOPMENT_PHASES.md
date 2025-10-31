@@ -38,22 +38,22 @@ This document tracks the development progress across all phases. Each phase buil
 - [x] Configure Supabase Storage buckets
 
 #### 1.3 Database Schema
-- [ ] Create organizations table
-- [ ] Create departments table
-- [ ] Create users table (extends Supabase auth)
-- [ ] Create agent_departments junction table
-- [ ] Set up Row Level Security (RLS) policies
-- [ ] Create database migrations
-- [ ] Seed initial data for testing
+- [x] Create organizations table
+- [x] Create departments table
+- [x] Create users table (extends Supabase auth)
+- [x] Create agent_departments junction table
+- [x] Set up Row Level Security (RLS) policies
+- [x] Create database migrations
+- [x] Seed initial data for testing
 
 #### 1.4 Authentication
-- [ ] Set up Supabase Auth
-- [ ] Implement email/OTP authentication
-- [ ] Create auth context/hooks
-- [ ] Build login page
-- [ ] Build signup page
-- [ ] Implement role-based access control
-- [ ] Create protected route wrapper
+- [x] Set up Supabase Auth
+- [x] Implement email/OTP authentication
+- [x] Create auth context/hooks
+- [x] Build login page
+- [x] Build signup page
+- [x] Implement role-based access control
+- [x] Create protected route wrapper
 
 #### 1.5 Web Dashboard Foundation
 - [ ] Initialize Next.js 14 project
