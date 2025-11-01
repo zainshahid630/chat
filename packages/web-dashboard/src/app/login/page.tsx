@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +8,7 @@ import { isValidEmail } from '@/lib/auth/utils';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, signInWithOTP } = useAuth();
+  const { user, supabaseUser, signIn, signInWithOTP } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,6 +16,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Redirect to fix-profile if authenticated but no user profile
+  useEffect(() => {
+    if (supabaseUser && !user) {
+      console.log('User authenticated but no profile, redirecting to fix-profile');
+      window.location.href = '/fix-profile';
+    } else if (user) {
+      console.log('User logged in, redirecting to dashboard:', user);
+      window.location.href = '/dashboard';
+    }
+  }, [user, supabaseUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +49,11 @@ export default function LoginPage() {
         if (!password) {
           throw new Error('Please enter your password');
         }
-        
+
+        console.log('Attempting to sign in...');
         await signIn(email, password);
-        router.push('/dashboard');
+        console.log('Sign in successful, waiting for user state to update...');
+        // Don't manually redirect - let the useEffect handle it when user state updates
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during sign in');

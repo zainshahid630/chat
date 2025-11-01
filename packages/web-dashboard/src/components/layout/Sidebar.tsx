@@ -32,9 +32,15 @@ const navigation: NavItem[] = [
     roles: ['super_admin', 'org_admin', 'agent', 'customer'],
   },
   {
+    name: 'Chat',
+    href: '/dashboard/chat',
+    icon: MessageSquare,
+    roles: ['org_admin', 'agent'],
+  },
+  {
     name: 'Conversations',
     href: '/dashboard/conversations',
-    icon: MessageSquare,
+    icon: Ticket,
     roles: ['super_admin', 'org_admin', 'agent'],
   },
   {

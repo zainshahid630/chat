@@ -22,7 +22,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createBrowserClient();
+
+  // Create client once
+  const [supabase] = useState(() => {
+    console.log('AuthProvider: Creating Supabase client');
+    return createBrowserClient();
+  });
 
   // Fetch user profile from users table
   const fetchUserProfile = async (userId: string) => {
@@ -42,24 +47,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
+    console.log('AuthContext: useEffect triggered');
+    let mounted = true;
+
     const initAuth = async () => {
       try {
-        // Get current session
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        console.log('AuthContext: Initializing auth...');
+        console.log('AuthContext: localStorage keys:', Object.keys(localStorage));
+
+        // Get current session from localStorage with timeout
+        console.log('AuthContext: Calling getSession...');
+
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('getSession timeout after 3s')), 3000)
+        );
+
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+        console.log('AuthContext: getSession completed', result);
+
+        if (!mounted) return;
+
+        const { data: { session }, error } = result;
+
+        if (error) {
+          console.error('AuthContext: Session error:', error);
+        }
+
+        console.log('AuthContext: Session:', session ? 'exists' : 'null');
+
         if (session?.user) {
+          console.log('AuthContext: User ID:', session.user.id);
           setSupabaseUser(session.user);
+          console.log('AuthContext: Fetching user profile...');
           const profile = await fetchUserProfile(session.user.id);
-          setUser(profile);
+          console.log('AuthContext: Profile:', profile);
+          if (mounted) {
+            setUser(profile);
+          }
+        } else {
+          console.log('AuthContext: No session found');
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('AuthContext: Error initializing auth:', error);
+        // Even on error, try to set loading to false so UI doesn't hang
       } finally {
-        setLoading(false);
+        console.log('AuthContext: Setting loading to false');
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     initAuth();
+
+    return () => {
+      mounted = false;
+    };
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -86,12 +130,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sign in with email and password
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) throw error;
+
+    // Fetch user profile immediately after sign in
+    if (data.user) {
+      const profile = await fetchUserProfile(data.user.id);
+      setUser(profile);
+      setSupabaseUser(data.user);
+    }
   };
 
   // Sign in with magic link (OTP)

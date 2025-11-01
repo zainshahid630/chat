@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatDesk Widget Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      background: white;
+      border-radius: 16px;
+      padding: 48px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      font-size: 36px;
+      color: #1a202c;
+      margin-bottom: 16px;
+    }
+
+    p {
+      font-size: 18px;
+      color: #4a5568;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .feature {
+      padding: 20px;
+      background: #f7fafc;
+      border-radius: 12px;
+      border: 2px solid #e2e8f0;
+    }
+
+    .feature h3 {
+      font-size: 18px;
+      color: #2d3748;
+      margin-bottom: 8px;
+    }
+
+    .feature p {
+      font-size: 14px;
+      color: #718096;
+      margin: 0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #5a67d8;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .info {
+      margin-top: 32px;
+      padding: 20px;
+      background: #edf2f7;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .info h4 {
+      font-size: 16px;
+      color: #2d3748;
+      margin-bottom: 8px;
+    }
+
+    .info ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .info li {
+      font-size: 14px;
+      color: #4a5568;
+      margin-bottom: 4px;
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .info li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #667eea;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <!-- <div class="container">
+    <h1>🎉 ChatDesk Widget Test Page</h1>
+    <p>
+      This is a test page for the ChatDesk chat widget. The widget should appear in the bottom-right corner of your screen.
+      Click the chat bubble to start a conversation!
+    </p>
+
+    <div class="features">
+      <div class="feature">
+        <h3>💬 Real-time Chat</h3>
+        <p>Instant messaging with your support team</p>
+      </div>
+      <div class="feature">
+        <h3>🎨 Customizable</h3>
+        <p>Match your brand colors and style</p>
+      </div>
+      <div class="feature">
+        <h3>📱 Responsive</h3>
+        <p>Works on desktop, tablet, and mobile</p>
+      </div>
+      <div class="feature">
+        <h3>🔔 Notifications</h3>
+        <p>Get notified of new messages</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button onclick="window.chatdesk('open')">Open Chat</button>
+      <button onclick="window.chatdesk('close')">Close Chat</button>
+      <button onclick="window.chatdesk('toggle')">Toggle Chat</button>
+      <button onclick="identifyUser()">Identify User</button>
+    </div>
+
+    <div class="info">
+      <h4>Widget Features:</h4>
+      <ul>
+        <li>Department selection</li>
+        <li>Pre-chat forms</li>
+        <li>Real-time messaging</li>
+        <li>Agent avatars and typing indicators</li>
+        <li>Message history</li>
+        <li>Notification sounds</li>
+        <li>Mobile responsive design</li>
+      </ul>
+    </div>
+  </div> -->
+
+  <!-- ChatDesk Widget -->
+  <!-- Development: Load widget from Vite dev server -->
+  <script type="module">
+    import 'http://localhost:3001/src/index.ts';
+
+    // Wait for widget to be ready
+    setTimeout(() => {
+      if (window.chatdesk) {
+        window.chatdesk('init', {
+          widgetKey: 'wk_86b77b8f3b1048958ecf9f4a811b9690',
+          apiUrl: 'http://localhost:3000',
+          position: 'bottom-right',
+          primaryColor: '#3B82F6',
+          autoOpen: false,
+        });
+      }
+    }, 100);
+  </script>
+
+  <!-- Production: Use this instead -->
+  <!--
+  <script>
+    (function(w,d,s,o,f,js,fjs){
+      w['ChatDesk']=o;w[o]=w[o]||function(){(w[o].q=w[o].q||[]).push(arguments)};
+      js=d.createElement(s),fjs=d.getElementsByTagName(s)[0];
+      js.id=o;js.src=f;js.async=1;fjs.parentNode.insertBefore(js,fjs);
+    }(window,document,'script','chatdesk','http://localhost:3001/widget.js'));
+
+    chatdesk('init', {
+      widgetKey: 'wk_86b77b8f3b1048958ecf9f4a811b9690',
+      apiUrl: 'http://localhost:3000',
+    });
+  </script>
+  -->
+
+    <!-- // Listen to widget events
+    chatdesk('on', 'ready', function() {
+      console.log('[ChatDesk] Widget is ready!');
+    });
+
+    chatdesk('on', 'opened', function() {
+      console.log('[ChatDesk] Widget opened');
+    });
+
+    chatdesk('on', 'closed', function() {
+      console.log('[ChatDesk] Widget closed');
+    });
+
+    chatdesk('on', 'conversation_started', function(conversation) {
+      console.log('[ChatDesk] Conversation started:', conversation);
+    });
+
+    chatdesk('on', 'message_sent', function(message) {
+      console.log('[ChatDesk] Message sent:', message);
+    });
+
+    chatdesk('on', 'message_received', function(message) {
+      console.log('[ChatDesk] Message received:', message);
+    });
+
+    // Helper function to identify user
+    function identifyUser() {
+      chatdesk('identify', {
+        name: 'John Doe',
+        email: 'john@example.com',
+        company: 'Acme Inc',
+      });
+      alert('User identified! Check console for details.');
+    } -->
+  </script>
+</body>
+</html>
+

@@ -5,13 +5,36 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare, Ticket, Users, TrendingUp } from 'lucide-react';
+import { useEffect } from 'react';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    console.log('Dashboard mounted');
+    console.log('User:', user);
+    console.log('Loading:', loading);
+  }, [user, loading]);
+
+  if (loading) {
+    console.log('Dashboard: showing loading state');
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
+    console.log('Dashboard: no user, returning null');
     return null; // Middleware will redirect
   }
+
+  console.log('Dashboard: rendering content for user:', user.email);
+
 
   return (
     <DashboardLayout>
