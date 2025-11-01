@@ -150,7 +150,8 @@ export async function GET(
       .from('messages')
       .select(`
         *,
-        sender:sender_id(id, full_name, avatar_url, role)
+        sender:sender_id(id, full_name, avatar_url, role),
+        widget_sender:widget_sender_id(id, visitor_id, email, full_name)
       `)
       .eq('conversation_id', params.id)
       .order('created_at', { ascending: true });

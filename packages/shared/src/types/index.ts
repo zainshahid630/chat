@@ -94,12 +94,33 @@ export interface AgentDepartment {
   created_at: string;
 }
 
+// Widget Customer
+export interface WidgetCustomer {
+  id: string;
+  organization_id: string;
+  visitor_id: string;
+  email?: string;
+  full_name?: string;
+  phone?: string;
+  user_agent?: string;
+  ip_address?: string;
+  country?: string;
+  city?: string;
+  custom_fields: Record<string, any>;
+  first_seen_at: string;
+  last_seen_at: string;
+  total_conversations: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Conversation
 export interface Conversation {
   id: string;
   organization_id: string;
   department_id: string;
-  customer_id: string;
+  customer_id?: string; // Optional - null for widget customers
+  widget_customer_id?: string; // For anonymous widget customers
   agent_id?: string;
   status: ConversationStatus;
   ticket_number?: string;
@@ -112,13 +133,20 @@ export interface Conversation {
   closed_at?: string;
   created_at: string;
   updated_at: string;
+
+  // Relations
+  widget_customer?: WidgetCustomer;
+  customer?: User;
+  agent?: User;
+  department?: Department;
 }
 
 // Message
 export interface Message {
   id: string;
   conversation_id: string;
-  sender_id: string;
+  sender_id?: string; // Null for widget customer messages
+  widget_sender_id?: string; // For widget customer messages
   sender_type: SenderType;
   content?: string;
   message_type: MessageType;
@@ -129,6 +157,20 @@ export interface Message {
   created_at: string;
   delivered_at?: string;
   read_at?: string;
+
+  // Relations
+  sender?: {
+    id: string;
+    full_name: string;
+    avatar_url?: string;
+    role: string;
+  };
+  widget_sender?: {
+    id: string;
+    visitor_id: string;
+    email?: string;
+    full_name?: string;
+  };
 }
 
 // Message Status
@@ -232,8 +274,9 @@ export interface WidgetSettings {
   // Security
   allowed_domains: string[];
 
-  // Default Department
+  // Departments
   default_department_id?: string;
+  enabled_department_ids?: string[];
 
   // Timestamps
   created_at: string;

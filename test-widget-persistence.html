@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatDesk Widget - Session Persistence Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .test-panel {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+    }
+    h2 {
+      color: #666;
+      font-size: 18px;
+      margin-top: 0;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .info-label {
+      font-weight: bold;
+      color: #666;
+    }
+    .info-value {
+      font-family: monospace;
+      background: #f0f0f0;
+      padding: 5px 10px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+    button {
+      background: #3B82F6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #2563EB;
+    }
+    button.danger {
+      background: #EF4444;
+    }
+    button.danger:hover {
+      background: #DC2626;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .status.success {
+      background: #D1FAE5;
+      color: #065F46;
+    }
+    .status.error {
+      background: #FEE2E2;
+      color: #991B1B;
+    }
+    .status.info {
+      background: #DBEAFE;
+      color: #1E40AF;
+    }
+    .test-instructions {
+      background: #FEF3C7;
+      border-left: 4px solid #F59E0B;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .test-instructions h3 {
+      margin-top: 0;
+      color: #92400E;
+    }
+    .test-instructions ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .test-instructions li {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 ChatDesk Widget - Session Persistence Test</h1>
+
+  <div class="test-panel">
+    <h2>📊 Session Information</h2>
+    <div class="info-grid">
+      <div class="info-label">Visitor ID:</div>
+      <div class="info-value" id="visitor-id">-</div>
+      
+      <div class="info-label">Session Token (Cookie):</div>
+      <div class="info-value" id="session-cookie">-</div>
+      
+      <div class="info-label">Session Token (localStorage):</div>
+      <div class="info-value" id="session-localstorage">-</div>
+      
+      <div class="info-label">Session Token (sessionStorage):</div>
+      <div class="info-value" id="session-sessionstorage">-</div>
+      
+      <div class="info-label">Browser Fingerprint:</div>
+      <div class="info-value" id="browser-fingerprint">-</div>
+    </div>
+    
+    <button onclick="refreshSessionInfo()">🔄 Refresh Info</button>
+    <button onclick="openWidget()">💬 Open Widget</button>
+  </div>
+
+  <div class="test-panel">
+    <h2>🧹 Clear Storage (Test Persistence)</h2>
+    <button class="danger" onclick="clearLocalStorage()">Clear localStorage Only</button>
+    <button class="danger" onclick="clearSessionStorage()">Clear sessionStorage Only</button>
+    <button class="danger" onclick="clearCookies()">Clear Cookies Only</button>
+    <button class="danger" onclick="clearAll()">Clear Everything</button>
+    <div id="clear-status"></div>
+  </div>
+
+  <div class="test-instructions">
+    <h3>📝 Test Instructions</h3>
+    <ol>
+      <li><strong>Initial Test:</strong> Open the widget and start a conversation. Send a few messages.</li>
+      <li><strong>Refresh Test:</strong> Refresh this page (F5). The conversation should restore automatically.</li>
+      <li><strong>localStorage Test:</strong> Click "Clear localStorage Only", then refresh. Session should restore from cookie.</li>
+      <li><strong>Cookie Test:</strong> Click "Clear Cookies Only", then refresh. Session should restore from localStorage.</li>
+      <li><strong>Full Clear Test:</strong> Click "Clear Everything", then refresh. A new session will be created.</li>
+      <li><strong>Browser Restart Test:</strong> Close browser completely, reopen this page. Session should persist via cookies.</li>
+      <li><strong>Days Later Test:</strong> Come back in a few days. Session should still be valid (30-day expiry).</li>
+    </ol>
+  </div>
+
+  <div class="test-panel">
+    <h2>📜 Console Logs</h2>
+    <div id="console-logs" style="background: #1F2937; color: #10B981; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto;">
+      <div>Waiting for widget initialization...</div>
+    </div>
+  </div>
+
+  <!-- ChatDesk Widget -->
+  <script src="http://localhost:3000/widget.js"></script>
+  <script>
+    // Override console.log to capture logs
+    const originalLog = console.log;
+    const logsContainer = document.getElementById('console-logs');
+    
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      const logEntry = document.createElement('div');
+      logEntry.textContent = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      logEntry.style.marginBottom = '5px';
+      logsContainer.appendChild(logEntry);
+      logsContainer.scrollTop = logsContainer.scrollHeight;
+    };
+
+    // Initialize widget
+    chatdesk('init', {
+      widgetKey: 'wk_86b77b8f3b1048958ecf9f4a811b9690',
+      apiUrl: 'http://localhost:3000',
+    });
+
+    // Helper functions
+    function getCookie(name) {
+      const nameEQ = name + '=';
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        let cookie = cookies[i];
+        while (cookie.charAt(0) === ' ') cookie = cookie.substring(1);
+        if (cookie.indexOf(nameEQ) === 0) {
+          return decodeURIComponent(cookie.substring(nameEQ.length));
+        }
+      }
+      return null;
+    }
+
+    function refreshSessionInfo() {
+      const visitorId = getCookie('chatdesk_visitor_id') || 
+                       localStorage.getItem('chatdesk_visitor_id') || 
+                       sessionStorage.getItem('chatdesk_visitor_id');
+      
+      const sessionKey = 'chatdesk_session_wk_86b77b8f3b1048958ecf9f4a811b9690';
+      const sessionCookie = getCookie(sessionKey);
+      const sessionLocal = localStorage.getItem(sessionKey);
+      const sessionSession = sessionStorage.getItem(sessionKey);
+
+      document.getElementById('visitor-id').textContent = visitorId || 'Not set';
+      document.getElementById('session-cookie').textContent = sessionCookie ? sessionCookie.substring(0, 40) + '...' : 'Not set';
+      document.getElementById('session-localstorage').textContent = sessionLocal ? sessionLocal.substring(0, 40) + '...' : 'Not set';
+      document.getElementById('session-sessionstorage').textContent = sessionSession ? sessionSession.substring(0, 40) + '...' : 'Not set';
+      
+      // Generate fingerprint
+      const data = [
+        navigator.userAgent,
+        navigator.language,
+        screen.colorDepth,
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset(),
+      ].join('|');
+      let hash = 0;
+      for (let i = 0; i < data.length; i++) {
+        const char = data.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      document.getElementById('browser-fingerprint').textContent = Math.abs(hash).toString(36);
+    }
+
+    function clearLocalStorage() {
+      localStorage.clear();
+      showStatus('localStorage cleared! Refresh the page to test recovery from cookies.', 'info');
+      refreshSessionInfo();
+    }
+
+    function clearSessionStorage() {
+      sessionStorage.clear();
+      showStatus('sessionStorage cleared! Refresh the page to test recovery from cookies/localStorage.', 'info');
+      refreshSessionInfo();
+    }
+
+    function clearCookies() {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf('=');
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      }
+      showStatus('Cookies cleared! Refresh the page to test recovery from localStorage.', 'info');
+      refreshSessionInfo();
+    }
+
+    function clearAll() {
+      localStorage.clear();
+      sessionStorage.clear();
+      clearCookies();
+      showStatus('All storage cleared! Refresh the page - a new session will be created.', 'error');
+      refreshSessionInfo();
+    }
+
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('clear-status');
+      statusDiv.className = 'status ' + type;
+      statusDiv.textContent = message;
+      setTimeout(() => {
+        statusDiv.textContent = '';
+        statusDiv.className = '';
+      }, 5000);
+    }
+
+    function openWidget() {
+      chatdesk('open');
+    }
+
+    // Auto-refresh session info every 2 seconds
+    setInterval(refreshSessionInfo, 2000);
+    
+    // Initial refresh
+    setTimeout(refreshSessionInfo, 1000);
+  </script>
+</body>
+</html>
+

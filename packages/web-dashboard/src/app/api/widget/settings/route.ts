@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
             business_hours: [],
             offline_message: 'We are currently offline. Leave a message and we will get back to you.',
             allowed_domains: [],
+            enabled_department_ids: [],
           })
           .select()
           .single();
@@ -142,6 +143,7 @@ export async function PUT(request: NextRequest) {
         business_hours: body.business_hours,
         allowed_domains: body.allowed_domains,
         default_department_id: body.default_department_id,
+        enabled_department_ids: body.enabled_department_ids,
       })
       .eq('organization_id', userProfile.organization_id)
       .select()

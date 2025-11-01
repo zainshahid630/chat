@@ -79,7 +79,13 @@ export default function ChatPage() {
   const fetchConversations = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      console.log('[Chat Page] Session:', session ? 'Present' : 'Missing');
+      console.log('[Chat Page] Access token:', session?.access_token ? `${session.access_token.substring(0, 20)}...` : 'None');
+
+      if (!session) {
+        console.error('[Chat Page] No session found!');
+        return;
+      }
 
       const params = new URLSearchParams();
       if (statusFilter !== 'all') {
@@ -89,15 +95,22 @@ export default function ChatPage() {
         params.append('search', searchQuery);
       }
 
+      console.log('[Chat Page] Fetching conversations...');
       const response = await fetch(`/api/conversations?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
 
+      console.log('[Chat Page] Response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('[Chat Page] Conversations loaded:', data.length);
         setConversations(data);
+      } else {
+        const error = await response.json();
+        console.error('[Chat Page] Error response:', error);
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -293,16 +306,16 @@ export default function ChatPage() {
                   >
                     <div className="flex items-start gap-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={conversation.customer?.avatar_url} />
+                        <AvatarImage src={conversation.customer?.avatar_url || conversation.widget_customer?.avatar_url} />
                         <AvatarFallback>
-                          {conversation.customer?.full_name?.charAt(0) || 'U'}
+                          {(conversation.customer?.full_name || conversation.widget_customer?.full_name || 'Anonymous')?.charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {conversation.customer?.full_name || 'Unknown'}
+                            {conversation.customer?.full_name || conversation.widget_customer?.full_name || 'Anonymous Visitor'}
                           </p>
                           {conversation.last_message && (
                             <span className="text-xs text-gray-500">
@@ -348,17 +361,17 @@ export default function ChatPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={selectedConversation.customer?.avatar_url} />
+                    <AvatarImage src={selectedConversation.customer?.avatar_url || selectedConversation.widget_customer?.avatar_url} />
                     <AvatarFallback>
-                      {selectedConversation.customer?.full_name?.charAt(0) || 'U'}
+                      {(selectedConversation.customer?.full_name || selectedConversation.widget_customer?.full_name || 'Anonymous')?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <h3 className="font-semibold text-gray-900">
-                      {selectedConversation.customer?.full_name || 'Unknown'}
+                      {selectedConversation.customer?.full_name || selectedConversation.widget_customer?.full_name || 'Anonymous Visitor'}
                     </h3>
                     <p className="text-sm text-gray-500">
-                      {selectedConversation.customer?.email}
+                      {selectedConversation.customer?.email || selectedConversation.widget_customer?.email || 'No email provided'}
                     </p>
                   </div>
                 </div>

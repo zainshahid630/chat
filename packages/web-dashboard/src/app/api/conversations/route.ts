@@ -11,15 +11,22 @@ export async function GET(request: NextRequest) {
   try {
     // Get Bearer token from Authorization header
     const authHeader = request.headers.get('authorization');
+    console.log('[Conversations API] Auth header:', authHeader ? 'Present' : 'Missing');
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('[Conversations API] No Bearer token in Authorization header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.substring(7);
+    console.log('[Conversations API] Token length:', token.length);
 
     // Verify token and get user
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    console.log('[Conversations API] Auth user:', authUser?.id, 'Error:', authError?.message);
+
     if (authError || !authUser) {
+      console.error('[Conversations API] Invalid token:', authError?.message);
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
@@ -31,11 +38,15 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (userError || !user) {
+      console.error('[Conversations API] User not found:', userError);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Only org_admin and agent can access conversations
-    if (!['org_admin', 'agent'].includes(user.role)) {
+    console.log('[Conversations API] User role:', user.role);
+
+    // Only super_admin, org_admin and agent can access conversations
+    if (!['super_admin', 'org_admin', 'agent'].includes(user.role)) {
+      console.error('[Conversations API] Forbidden - user role:', user.role);
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -51,6 +62,7 @@ export async function GET(request: NextRequest) {
       .from('conversations')
       .select(`
         *,
+        widget_customer:widget_customer_id(id, visitor_id, email, full_name, phone, custom_fields),
         customer:customer_id(id, full_name, email, avatar_url),
         agent:agent_id(id, full_name, email, avatar_url),
         department:department_id(id, name),
@@ -80,14 +92,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch conversations' }, { status: 500 });
     }
 
-    // Filter by search if provided (search in customer name/email)
+    // Filter by search if provided (search in customer name/email or widget customer)
     let filteredConversations = conversations || [];
     if (search) {
       const searchLower = search.toLowerCase();
       filteredConversations = filteredConversations.filter((conv: any) => {
         const customerName = conv.customer?.full_name?.toLowerCase() || '';
         const customerEmail = conv.customer?.email?.toLowerCase() || '';
-        return customerName.includes(searchLower) || customerEmail.includes(searchLower);
+        const widgetCustomerName = conv.widget_customer?.full_name?.toLowerCase() || '';
+        const widgetCustomerEmail = conv.widget_customer?.email?.toLowerCase() || '';
+        return customerName.includes(searchLower) ||
+               customerEmail.includes(searchLower) ||
+               widgetCustomerName.includes(searchLower) ||
+               widgetCustomerEmail.includes(searchLower);
       });
     }
 

@@ -67,6 +67,11 @@ export class ChatWidget {
   private async initializeSession() {
     try {
       const visitorId = this.getOrCreateVisitorId();
+      const existingSessionToken = this.getStoredSessionToken();
+
+      console.log('[ChatDesk] Initializing session...');
+      console.log('[ChatDesk] Visitor ID:', visitorId);
+      console.log('[ChatDesk] Existing session token:', existingSessionToken ? 'Found' : 'None');
 
       const response = await fetch(`${this.config.apiUrl}/api/widget/init`, {
         method: 'POST',
@@ -76,6 +81,7 @@ export class ChatWidget {
         body: JSON.stringify({
           widgetKey: this.config.widgetKey,
           visitorId,
+          existingSessionToken,
           userData: {
             ...this.config.userData,
             currentUrl: window.location.href,
@@ -87,14 +93,27 @@ export class ChatWidget {
         throw new Error('Failed to initialize widget session');
       }
 
-      this.session = await response.json();
+      const sessionData = await response.json();
+      this.session = sessionData;
+
+      // Store session token in localStorage for persistence
+      this.storeSessionToken(sessionData.sessionToken);
+
+      console.log('[ChatDesk] Session initialized:', sessionData.sessionToken);
+      console.log('[ChatDesk] Existing conversation:', sessionData.conversationId || 'None');
 
       // Initialize Supabase client for realtime
       if (this.session) {
         this.supabase = createClient(
-          'https://pnjbqxfhtfitriyviwid.supabase.co', // You should get this from session
+          'https://pnjbqxfhtfitriyviwid.supabase.co',
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuamJxeGZodGZpdHJpeXZpd2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAzNjI4NzksImV4cCI6MjA0NTkzODg3OX0.Ks_Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8' // Anon key
         );
+      }
+
+      // If there's an existing conversation, load it
+      if (sessionData.conversationId) {
+        console.log('[ChatDesk] Restoring existing conversation:', sessionData.conversationId);
+        await this.restoreConversation(sessionData.conversationId);
       }
     } catch (error) {
       console.error('[ChatDesk] Session initialization failed:', error);
@@ -103,18 +122,277 @@ export class ChatWidget {
   }
 
   /**
-   * Get or create visitor ID (stored in localStorage)
+   * Get or create visitor ID (multi-layer storage)
    */
   private getOrCreateVisitorId(): string {
     const key = 'chatdesk_visitor_id';
-    let visitorId = localStorage.getItem(key);
+
+    // Try to get from multiple sources
+    let visitorId = this.getCookie(key) ||
+                    localStorage.getItem(key) ||
+                    sessionStorage.getItem(key);
 
     if (!visitorId) {
-      visitorId = `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Generate new visitor ID with browser fingerprint
+      const fingerprint = this.generateBrowserFingerprint();
+      visitorId = `visitor_${Date.now()}_${fingerprint}_${Math.random().toString(36).substring(2, 9)}`;
+
+      // Store in all locations
+      this.setCookie(key, visitorId, 365 * 10); // 10 years
       localStorage.setItem(key, visitorId);
+      sessionStorage.setItem(key, visitorId);
+    } else {
+      // Sync across all storage locations
+      this.setCookie(key, visitorId, 365 * 10);
+      localStorage.setItem(key, visitorId);
+      sessionStorage.setItem(key, visitorId);
     }
 
     return visitorId;
+  }
+
+  /**
+   * Generate browser fingerprint for visitor identification
+   */
+  private generateBrowserFingerprint(): string {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    let fingerprint = '';
+
+    // Collect browser characteristics
+    const data = [
+      navigator.userAgent,
+      navigator.language,
+      screen.colorDepth,
+      screen.width + 'x' + screen.height,
+      new Date().getTimezoneOffset(),
+      !!window.sessionStorage,
+      !!window.localStorage,
+    ].join('|');
+
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < data.length; i++) {
+      const char = data.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+
+    fingerprint = Math.abs(hash).toString(36);
+    return fingerprint;
+  }
+
+  /**
+   * Get stored session token from multiple sources
+   */
+  private getStoredSessionToken(): string | null {
+    const key = `chatdesk_session_${this.config.widgetKey}`;
+
+    // Try cookie first (most persistent), then localStorage, then sessionStorage
+    return this.getCookie(key) ||
+           localStorage.getItem(key) ||
+           sessionStorage.getItem(key);
+  }
+
+  /**
+   * Store session token in multiple locations
+   */
+  private storeSessionToken(sessionToken: string): void {
+    const key = `chatdesk_session_${this.config.widgetKey}`;
+
+    // Store in cookie (30 days)
+    this.setCookie(key, sessionToken, 30);
+
+    // Store in localStorage (backup)
+    try {
+      localStorage.setItem(key, sessionToken);
+    } catch (e) {
+      console.warn('[ChatDesk] localStorage not available:', e);
+    }
+
+    // Store in sessionStorage (current tab)
+    try {
+      sessionStorage.setItem(key, sessionToken);
+    } catch (e) {
+      console.warn('[ChatDesk] sessionStorage not available:', e);
+    }
+  }
+
+  /**
+   * Clear stored session token from all locations
+   */
+  private clearSessionToken(): void {
+    const key = `chatdesk_session_${this.config.widgetKey}`;
+
+    // Clear from cookie
+    this.deleteCookie(key);
+
+    // Clear from localStorage
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      // Ignore
+    }
+
+    // Clear from sessionStorage
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  /**
+   * Set a cookie
+   */
+  private setCookie(name: string, value: string, days: number): void {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+    const cookie = `${name}=${encodeURIComponent(value)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+    document.cookie = cookie;
+  }
+
+  /**
+   * Get a cookie value
+   */
+  private getCookie(name: string): string | null {
+    const nameEQ = name + '=';
+    const cookies = document.cookie.split(';');
+
+    for (let i = 0; i < cookies.length; i++) {
+      let cookie = cookies[i];
+      while (cookie.charAt(0) === ' ') {
+        cookie = cookie.substring(1, cookie.length);
+      }
+      if (cookie.indexOf(nameEQ) === 0) {
+        return decodeURIComponent(cookie.substring(nameEQ.length, cookie.length));
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Delete a cookie
+   */
+  private deleteCookie(name: string): void {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+  }
+
+  /**
+   * Restore an existing conversation
+   */
+  private async restoreConversation(conversationId: string): Promise<void> {
+    try {
+      console.log('[ChatDesk] Restoring conversation:', conversationId);
+
+      // Fetch conversation details
+      const response = await fetch(
+        `${this.config.apiUrl}/api/widget/conversations/${conversationId}`,
+        {
+          headers: {
+            'X-Session-Token': this.session!.sessionToken,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error('[ChatDesk] Failed to restore conversation');
+        return;
+      }
+
+      const data = await response.json();
+      this.conversation = data.conversation;
+
+      console.log('[ChatDesk] Conversation restored:', this.conversation);
+
+      // Load messages
+      await this.loadMessages();
+
+      // Subscribe to realtime updates
+      this.subscribeToMessages();
+
+      // Render the chat view (show messages)
+      this.renderChatView();
+    } catch (error) {
+      console.error('[ChatDesk] Failed to restore conversation:', error);
+    }
+  }
+
+  /**
+   * Render chat view after restoring conversation
+   */
+  private renderChatView(): void {
+    if (!this.chatWindow) return;
+
+    // Find the main content area
+    const contentArea = this.chatWindow.querySelector('#chatdesk-content');
+    if (!contentArea) return;
+
+    // Show the chat interface
+    contentArea.innerHTML = `
+      <div id="chatdesk-messages" style="
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background-color: #f9fafb;
+      "></div>
+      <div style="
+        padding: 16px;
+        background-color: white;
+        border-top: 1px solid #e5e7eb;
+      ">
+        <div style="display: flex; gap: 8px;">
+          <input
+            type="text"
+            id="chatdesk-input"
+            placeholder="Type your message..."
+            style="
+              flex: 1;
+              padding: 10px 14px;
+              border: 1px solid #d1d5db;
+              border-radius: 8px;
+              font-size: 14px;
+              outline: none;
+            "
+          />
+          <button
+            id="chatdesk-send"
+            style="
+              padding: 10px 20px;
+              background-color: ${this.session!.config.primaryColor};
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+            "
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Attach event listeners
+    const input = this.chatWindow.querySelector('#chatdesk-input') as HTMLInputElement;
+    const sendButton = this.chatWindow.querySelector('#chatdesk-send') as HTMLButtonElement;
+
+    if (sendButton) {
+      sendButton.addEventListener('click', () => this.sendMessage());
+    }
+
+    if (input) {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.sendMessage();
+        }
+      });
+    }
+
+    // Render messages
+    this.renderMessages();
   }
 
   /**
@@ -124,15 +402,25 @@ export class ChatWidget {
     if (!this.session) return;
 
     try {
+      console.log('[ChatDesk] Loading departments from:', `${this.config.apiUrl}/api/widget/departments`);
       const response = await fetch(`${this.config.apiUrl}/api/widget/departments`, {
         headers: {
           'X-Session-Token': this.session.sessionToken,
         },
       });
 
+      console.log('[ChatDesk] Departments response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('[ChatDesk] Departments data:', data);
         this.departments = data.departments || [];
+        console.log('[ChatDesk] Loaded departments:', this.departments.length);
+
+        // Re-render departments after loading
+        this.renderDepartments();
+      } else {
+        console.error('[ChatDesk] Failed to load departments - status:', response.status);
       }
     } catch (error) {
       console.error('[ChatDesk] Failed to load departments:', error);
@@ -335,13 +623,20 @@ export class ChatWidget {
    * Render department selection
    */
   private renderDepartments() {
+    console.log('[ChatDesk] Rendering departments, count:', this.departments.length);
     const container = this.chatWindow?.querySelector('#chatdesk-departments');
-    if (!container) return;
+    if (!container) {
+      console.log('[ChatDesk] Department container not found');
+      return;
+    }
 
     if (this.departments.length === 0) {
+      console.log('[ChatDesk] No departments to display');
       container.innerHTML = '<div style="color: #6b7280; font-size: 14px;">No departments available</div>';
       return;
     }
+
+    console.log('[ChatDesk] Rendering', this.departments.length, 'departments');
 
     container.innerHTML = this.departments.map(dept => `
       <button
@@ -369,7 +664,13 @@ export class ChatWidget {
       btn.addEventListener('click', (e) => {
         const deptId = (e.currentTarget as HTMLElement).dataset.deptId;
         if (deptId) {
-          this.startConversation(deptId);
+          const department = this.departments.find(d => d.id === deptId);
+          // Check if department has pre-chat form
+          if (department?.pre_chat_form && Array.isArray(department.pre_chat_form) && department.pre_chat_form.length > 0) {
+            this.showPreChatForm(department);
+          } else {
+            this.startConversation(deptId);
+          }
         }
       });
 
@@ -386,9 +687,123 @@ export class ChatWidget {
   }
 
   /**
+   * Show pre-chat form for department
+   */
+  private showPreChatForm(department: Department) {
+    const container = this.chatWindow?.querySelector('#chatdesk-departments');
+    if (!container) return;
+
+    const fields = department.pre_chat_form || [];
+
+    container.innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <button id="chatdesk-back-btn" style="
+          background: none;
+          border: none;
+          color: ${this.session!.config.primaryColor};
+          cursor: pointer;
+          font-size: 14px;
+          padding: 0;
+          margin-bottom: 12px;
+        ">← Back to departments</button>
+        <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 8px;">
+          ${department.name}
+        </h3>
+        <p style="font-size: 14px; color: #6b7280; margin-bottom: 16px;">
+          Please fill out the form below to start chatting
+        </p>
+      </div>
+      <form id="chatdesk-prechat-form" style="display: flex; flex-direction: column; gap: 12px;">
+        ${fields.map((field: any, index: number) => `
+          <div>
+            <label style="display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 4px;">
+              ${field.label}${field.required ? ' *' : ''}
+            </label>
+            ${this.renderFormField(field, index)}
+          </div>
+        `).join('')}
+        <button type="submit" style="
+          width: 100%;
+          padding: 12px;
+          background-color: ${this.session!.config.primaryColor};
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-weight: 500;
+          cursor: pointer;
+          margin-top: 8px;
+        ">Start Chat</button>
+      </form>
+    `;
+
+    // Back button handler
+    const backBtn = container.querySelector('#chatdesk-back-btn');
+    backBtn?.addEventListener('click', () => {
+      this.renderDepartments();
+    });
+
+    // Form submit handler
+    const form = container.querySelector('#chatdesk-prechat-form') as HTMLFormElement;
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Collect form data
+      const formData: any = {};
+      fields.forEach((field: any, index: number) => {
+        const input = form.querySelector(`[name="field_${index}"]`) as HTMLInputElement;
+        if (input) {
+          formData[`field_${index}`] = input.value;
+        }
+      });
+
+      // Start conversation with pre-chat data
+      await this.startConversation(department.id, formData);
+    });
+  }
+
+  /**
+   * Render a form field based on type
+   */
+  private renderFormField(field: any, index: number): string {
+    const baseStyle = `
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+    `;
+
+    switch (field.type) {
+      case 'textarea':
+        return `<textarea name="field_${index}" ${field.required ? 'required' : ''}
+                  placeholder="${field.placeholder || ''}"
+                  style="${baseStyle} min-height: 80px; resize: vertical;"></textarea>`;
+
+      case 'select':
+        return `<select name="field_${index}" ${field.required ? 'required' : ''} style="${baseStyle}">
+                  <option value="">Select...</option>
+                  ${(field.options || []).map((opt: string) => `<option value="${opt}">${opt}</option>`).join('')}
+                </select>`;
+
+      case 'checkbox':
+        return `<label style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" name="field_${index}" ${field.required ? 'required' : ''}
+                    style="width: 16px; height: 16px;">
+                  <span style="font-size: 14px; color: #6b7280;">${field.placeholder || 'I agree'}</span>
+                </label>`;
+
+      default:
+        return `<input type="${field.type || 'text'}" name="field_${index}"
+                  ${field.required ? 'required' : ''}
+                  placeholder="${field.placeholder || ''}"
+                  style="${baseStyle}">`;
+    }
+  }
+
+  /**
    * Start a conversation with a department
    */
-  private async startConversation(departmentId: string) {
+  private async startConversation(departmentId: string, preChatData?: any) {
     if (!this.session) return;
 
     try {
@@ -402,6 +817,7 @@ export class ChatWidget {
           sessionToken: this.session.sessionToken,
           departmentId,
           customerData: this.config.userData,
+          preChatData: preChatData || {},
         }),
       });
 

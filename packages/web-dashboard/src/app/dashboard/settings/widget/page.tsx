@@ -12,13 +12,21 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Check, Eye, Settings, Code, Palette } from 'lucide-react';
+import { Copy, Check, Eye, Settings, Code, Palette, Users } from 'lucide-react';
 import type { WidgetSettings } from '@chatdesk/shared/types';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+
+interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
 
 export default function WidgetSettingsPage() {
   const { user, loading: authLoading } = useAuth();
   const [settings, setSettings] = useState<WidgetSettings | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -26,10 +34,11 @@ export default function WidgetSettingsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [supabase] = useState(() => createBrowserClient());
 
-  // Fetch widget settings
+  // Fetch widget settings and departments
   useEffect(() => {
     if (!authLoading && user) {
       fetchSettings();
+      fetchDepartments();
     } else if (!authLoading && !user) {
       setError('Please log in to access widget settings');
       setLoading(false);
@@ -70,6 +79,30 @@ export default function WidgetSettingsPage() {
       setError(err.message || 'Widget settings not found. Please contact support.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        return;
+      }
+
+      const response = await fetch('/api/department', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDepartments(data.departments || []);
+      }
+    } catch (err) {
+      console.error('Error fetching departments:', err);
+      setDepartments([]);
     }
   };
 
@@ -223,6 +256,10 @@ export default function WidgetSettingsPage() {
           <TabsTrigger value="behavior">
             <Settings className="w-4 h-4 mr-2" />
             Behavior
+          </TabsTrigger>
+          <TabsTrigger value="departments">
+            <Users className="w-4 h-4 mr-2" />
+            Departments
           </TabsTrigger>
           <TabsTrigger value="preview">
             <Eye className="w-4 h-4 mr-2" />
@@ -444,6 +481,70 @@ export default function WidgetSettingsPage() {
               <Button onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Departments Tab */}
+        <TabsContent value="departments">
+          <Card>
+            <CardHeader>
+              <CardTitle>Department Selection</CardTitle>
+              <CardDescription>
+                Choose which departments are available in the widget. If none are selected, all active departments will be shown.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {departments.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No departments found.</p>
+                  <p className="text-sm mt-2">Create departments first to enable them in the widget.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {departments.map((dept) => (
+                    <div key={dept.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium">{dept.name}</div>
+                        {dept.description && (
+                          <div className="text-sm text-gray-500 mt-1">{dept.description}</div>
+                        )}
+                        {!dept.is_active && (
+                          <Badge variant="secondary" className="mt-2">Inactive</Badge>
+                        )}
+                      </div>
+                      <Switch
+                        checked={
+                          !settings.enabled_department_ids ||
+                          settings.enabled_department_ids.length === 0 ||
+                          settings.enabled_department_ids.includes(dept.id)
+                        }
+                        onCheckedChange={(checked) => {
+                          const currentIds = settings.enabled_department_ids || [];
+                          let newIds: string[];
+
+                          if (checked) {
+                            // Add department
+                            newIds = [...currentIds, dept.id];
+                          } else {
+                            // Remove department
+                            newIds = currentIds.filter((id: string) => id !== dept.id);
+                          }
+
+                          setSettings({ ...settings, enabled_department_ids: newIds });
+                        }}
+                        disabled={!dept.is_active}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-4 border-t">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

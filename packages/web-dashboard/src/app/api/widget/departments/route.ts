@@ -34,13 +34,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Get widget settings to check enabled departments
+    const { data: widgetSettings } = await supabase
+      .from('widget_settings')
+      .select('enabled_department_ids')
+      .eq('organization_id', session.organization_id)
+      .single();
+
+    console.log('[Widget Departments] Organization ID:', session.organization_id);
+    console.log('[Widget Departments] Widget settings:', widgetSettings);
+
     // Get active departments
-    const { data: departments, error: departmentsError } = await supabase
+    let query = supabase
       .from('departments')
       .select('id, name, description, pre_chat_form')
       .eq('organization_id', session.organization_id)
-      .eq('is_active', true)
-      .order('name');
+      .eq('is_active', true);
+
+    // Filter by enabled departments if configured
+    if (widgetSettings?.enabled_department_ids && widgetSettings.enabled_department_ids.length > 0) {
+      console.log('[Widget Departments] Filtering by enabled IDs:', widgetSettings.enabled_department_ids);
+      query = query.in('id', widgetSettings.enabled_department_ids);
+    } else {
+      console.log('[Widget Departments] Showing all active departments');
+    }
+
+    const { data: departments, error: departmentsError } = await query.order('name');
+
+    console.log('[Widget Departments] Found departments:', departments?.length || 0);
 
     if (departmentsError) {
       console.error('Error fetching departments:', departmentsError);

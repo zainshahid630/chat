@@ -50,7 +50,8 @@ export async function GET(
       .from('messages')
       .select(`
         *,
-        sender:sender_id(id, full_name, email, avatar_url, role)
+        sender:sender_id(id, full_name, email, avatar_url, role),
+        widget_sender:widget_sender_id(id, visitor_id, email, full_name)
       `)
       .eq('conversation_id', params.id)
       .order('created_at', { ascending: true });
@@ -114,14 +115,15 @@ export async function POST(
       );
     }
 
-    // Get conversation to find customer ID
+    // Get conversation to find customer ID or widget customer ID
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
-      .select('customer_id, organization_id')
+      .select('customer_id, widget_customer_id, organization_id')
       .eq('id', params.id)
       .single();
 
     if (conversationError || !conversation) {
+      console.error('[Widget Messages] Conversation not found:', conversationError);
       return NextResponse.json(
         { error: 'Conversation not found' },
         { status: 404, headers: getCorsHeaders() }
@@ -139,22 +141,42 @@ export async function POST(
       );
     }
 
-    // Create message
+    console.log('[Widget Messages] Creating message for conversation:', params.id);
+    console.log('[Widget Messages] Sender - customer_id:', conversation.customer_id, 'widget_customer_id:', conversation.widget_customer_id);
+
+    // Create message with appropriate sender
+    const messageData: any = {
+      conversation_id: params.id,
+      content: content || '',
+      message_type: messageType,
+      media_url: mediaUrl,
+      media_type: mediaType,
+      media_size: mediaSize,
+      media_name: mediaName,
+    };
+
+    // Set sender based on conversation type
+    if (conversation.widget_customer_id) {
+      messageData.widget_sender_id = conversation.widget_customer_id;
+      messageData.sender_id = null;
+    } else if (conversation.customer_id) {
+      messageData.sender_id = conversation.customer_id;
+      messageData.widget_sender_id = null;
+    } else {
+      console.error('[Widget Messages] No customer_id or widget_customer_id found');
+      return NextResponse.json(
+        { error: 'Invalid conversation - no customer found' },
+        { status: 400, headers: getCorsHeaders() }
+      );
+    }
+
     const { data: message, error: messageError } = await supabase
       .from('messages')
-      .insert({
-        conversation_id: params.id,
-        sender_id: conversation.customer_id,
-        content: content || '',
-        message_type: messageType,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        media_size: mediaSize,
-        media_name: mediaName,
-      })
+      .insert(messageData)
       .select(`
         *,
-        sender:sender_id(id, full_name, email, avatar_url, role)
+        sender:sender_id(id, full_name, email, avatar_url, role),
+        widget_sender:widget_sender_id(id, visitor_id, email, full_name)
       `)
       .single();
 

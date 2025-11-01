@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { sessionToken, departmentId, preChatData, customerData } = body;
 
+    console.log('[Widget Conversations] Creating conversation for department:', departmentId);
+
     if (!sessionToken) {
       return NextResponse.json(
         { error: 'Session token is required' },
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
         .from('conversations')
         .select(`
           *,
+          widget_customer:widget_customer_id(id, visitor_id, email, full_name, phone, custom_fields),
           customer:customer_id(id, full_name, email, avatar_url),
           agent:agent_id(id, full_name, email, avatar_url),
           department:department_id(id, name)
@@ -57,62 +60,47 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create or get customer user
-    let customerId: string;
+    // Create or get widget customer
+    let widgetCustomerId: string;
 
-    if (customerData?.email) {
-      // Check if customer exists
-      const { data: existingCustomer } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', customerData.email)
-        .eq('organization_id', session.organization_id)
-        .eq('role', 'customer')
-        .single();
+    // Check if widget customer already exists for this visitor
+    const { data: existingCustomer } = await supabase
+      .from('widget_customers')
+      .select('id')
+      .eq('organization_id', session.organization_id)
+      .eq('visitor_id', session.visitor_id || session.id)
+      .single();
 
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-      } else {
-        // Create new customer
-        const { data: newCustomer, error: customerError } = await supabase
-          .from('users')
-          .insert({
-            organization_id: session.organization_id,
-            email: customerData.email,
-            full_name: customerData.name || 'Anonymous Customer',
-            role: 'customer',
-            status: 'online',
-          })
-          .select()
-          .single();
-
-        if (customerError) {
-          console.error('Error creating customer:', customerError);
-          return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
-        }
-
-        customerId = newCustomer.id;
-      }
+    if (existingCustomer) {
+      widgetCustomerId = existingCustomer.id;
+      console.log('[Widget Conversations] Found existing widget customer:', widgetCustomerId);
     } else {
-      // Create anonymous customer
-      const { data: anonymousCustomer, error: customerError } = await supabase
-        .from('users')
+      // Create new widget customer
+      const { data: newCustomer, error: customerError } = await supabase
+        .from('widget_customers')
         .insert({
           organization_id: session.organization_id,
-          email: `anonymous_${session.visitor_id || session.id}@widget.chatdesk.com`,
-          full_name: 'Anonymous Customer',
-          role: 'customer',
-          status: 'online',
+          visitor_id: session.visitor_id || session.id,
+          email: customerData?.email,
+          full_name: customerData?.name,
+          phone: customerData?.phone,
+          custom_fields: preChatData || {},
+          user_agent: session.user_agent,
+          ip_address: session.ip_address,
         })
         .select()
         .single();
 
       if (customerError) {
-        console.error('Error creating anonymous customer:', customerError);
-        return NextResponse.json({ error: 'Failed to create customer' }, { status: 500 });
+        console.error('Error creating widget customer:', customerError);
+        return NextResponse.json(
+          { error: 'Failed to create customer' },
+          { status: 500, headers: getCorsHeaders() }
+        );
       }
 
-      customerId = anonymousCustomer.id;
+      widgetCustomerId = newCustomer.id;
+      console.log('[Widget Conversations] Created new widget customer:', widgetCustomerId);
     }
 
     // Get widget settings to determine default department
@@ -125,21 +113,26 @@ export async function POST(request: NextRequest) {
     const finalDepartmentId = departmentId || widgetSettings?.default_department_id;
 
     if (!finalDepartmentId) {
-      return NextResponse.json({ error: 'Department is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Department is required' },
+        { status: 400, headers: getCorsHeaders() }
+      );
     }
 
-    // Create conversation
+    // Create conversation with widget customer
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
       .insert({
         organization_id: session.organization_id,
         department_id: finalDepartmentId,
-        customer_id: customerId,
+        widget_customer_id: widgetCustomerId,
+        customer_id: null, // Widget customers don't have auth accounts
         status: 'waiting',
         pre_chat_data: preChatData || {},
       })
       .select(`
         *,
+        widget_customer:widget_customer_id(id, visitor_id, email, full_name, phone, custom_fields),
         customer:customer_id(id, full_name, email, avatar_url),
         agent:agent_id(id, full_name, email, avatar_url),
         department:department_id(id, name)
