@@ -19,6 +19,9 @@ export class ChatWidget {
   private eventCallbacks: EventCallbacks = {};
   private supabase: any;
   private realtimeChannel: RealtimeChannel | null = null;
+  private conversationChannel: RealtimeChannel | null = null;
+  private isAgentTyping: boolean = false;
+  private typingTimeout: NodeJS.Timeout | null = null;
 
   // DOM elements
   private container: HTMLElement | null = null;
@@ -964,9 +967,13 @@ export class ChatWidget {
       const data = await response.json();
 
       // Message will be added via realtime subscription
-      // But add it immediately for better UX
-      this.messages.push(data.message);
-      this.renderMessages();
+      // Just scroll to bottom for better UX
+      setTimeout(() => {
+        const messagesContainer = this.chatWindow?.querySelector('.chatdesk-messages');
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      }, 100);
 
       this.emit('message_sent', data.message);
     } catch (error) {
@@ -983,8 +990,11 @@ export class ChatWidget {
   private subscribeToMessages() {
     if (!this.supabase || !this.conversation) return;
 
+    console.log('[ChatDesk] Setting up realtime subscriptions for conversation:', this.conversation.id);
+
+    // Subscribe to new messages
     this.realtimeChannel = this.supabase
-      .channel(`conversation:${this.conversation.id}`)
+      .channel(`conversation:${this.conversation.id}:messages`)
       .on(
         'postgres_changes',
         {
@@ -993,18 +1003,72 @@ export class ChatWidget {
           table: 'messages',
           filter: `conversation_id=eq.${this.conversation.id}`,
         },
-        (payload: any) => {
+        async (payload: any) => {
+          console.log('[ChatDesk] New message received via realtime:', payload.new);
+
           // Only add if not already in messages (avoid duplicates)
           if (!this.messages.find(m => m.id === payload.new.id)) {
-            this.messages.push(payload.new);
-            this.renderMessages();
+            // Fetch the complete message with sender info
+            try {
+              const response = await fetch(
+                `${this.config.apiUrl}/api/widget/conversations/${this.conversation!.id}/messages`,
+                {
+                  headers: {
+                    'X-Session-Token': this.session!.sessionToken,
+                  },
+                }
+              );
 
-            // Play notification sound if enabled and message is from agent
-            if (this.session?.config.playNotificationSound && payload.new.sender?.role !== 'customer') {
-              this.playNotificationSound();
+              if (response.ok) {
+                const allMessages = await response.json();
+                this.messages = allMessages;
+                this.renderMessages();
+
+                // Scroll to bottom
+                setTimeout(() => {
+                  const messagesContainer = this.chatWindow?.querySelector('.chatdesk-messages');
+                  if (messagesContainer) {
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                  }
+                }, 100);
+
+                // Play notification sound if enabled and message is from agent
+                if (this.session?.config.playNotificationSound && payload.new.sender_id) {
+                  this.playNotificationSound();
+                }
+
+                this.emit('message_received', payload.new);
+              }
+            } catch (error) {
+              console.error('[ChatDesk] Error fetching updated messages:', error);
             }
+          }
+        }
+      )
+      .subscribe();
 
-            this.emit('message_received', payload.new);
+    // Subscribe to conversation updates (status changes, agent assignment, etc.)
+    this.conversationChannel = this.supabase
+      .channel(`conversation:${this.conversation.id}:updates`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${this.conversation.id}`,
+        },
+        (payload: any) => {
+          console.log('[ChatDesk] Conversation updated:', payload.new);
+
+          // Update conversation data
+          if (this.conversation) {
+            this.conversation = { ...this.conversation, ...payload.new };
+
+            // Re-render chat view to show updated status/agent
+            this.renderChatView();
+
+            this.emit('conversation_updated', payload.new);
           }
         }
       )
@@ -1144,12 +1208,27 @@ export class ChatWidget {
    * Destroy widget
    */
   destroy() {
+    console.log('[ChatDesk] Destroying widget and cleaning up subscriptions');
+
     if (this.realtimeChannel) {
       this.realtimeChannel.unsubscribe();
+      this.realtimeChannel = null;
     }
+
+    if (this.conversationChannel) {
+      this.conversationChannel.unsubscribe();
+      this.conversationChannel = null;
+    }
+
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+      this.typingTimeout = null;
+    }
+
     if (this.container) {
       this.container.remove();
     }
+
     this.emit('destroyed');
   }
 }

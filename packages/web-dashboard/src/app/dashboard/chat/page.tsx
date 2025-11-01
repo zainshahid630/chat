@@ -74,6 +74,8 @@ export default function ChatPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Fetch conversations
   const fetchConversations = async () => {
@@ -144,7 +146,10 @@ export default function ChatPage() {
   const sendMessage = async () => {
     if (!messageInput.trim() || !selectedConversation || sending) return;
 
+    const messageContent = messageInput;
+    setMessageInput(''); // Clear input immediately for better UX
     setSending(true);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -156,26 +161,28 @@ export default function ChatPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content: messageInput,
+          content: messageContent,
           message_type: 'text',
         }),
       });
 
       if (response.ok) {
-        const newMessage = await response.json();
-        setMessages([...messages, newMessage]);
-        setMessageInput('');
-        
-        // Scroll to bottom
+        // Message will be added via realtime subscription
+        // Just scroll to bottom
         setTimeout(() => {
           const messagesContainer = document.getElementById('messages-container');
           if (messagesContainer) {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
           }
         }, 100);
+      } else {
+        // If failed, restore the message input
+        setMessageInput(messageContent);
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      // Restore the message input on error
+      setMessageInput(messageContent);
     } finally {
       setSending(false);
     }
@@ -186,6 +193,128 @@ export default function ChatPage() {
     setSelectedConversation(conversation);
     fetchMessages(conversation.id);
   };
+
+  // Subscribe to realtime updates for selected conversation
+  useEffect(() => {
+    if (!selectedConversation || !supabase) return;
+
+    console.log('[Chat Page] Setting up realtime subscription for conversation:', selectedConversation.id);
+
+    // Subscribe to new messages
+    const messagesChannel = supabase
+      .channel(`conversation:${selectedConversation.id}:messages`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${selectedConversation.id}`,
+        },
+        async (payload: any) => {
+          console.log('[Chat Page] New message received:', payload.new);
+
+          // Fetch the complete message with sender info
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) return;
+
+          const response = await fetch(`/api/conversations/${selectedConversation.id}/messages`, {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+          });
+
+          if (response.ok) {
+            const allMessages = await response.json();
+            setMessages(allMessages);
+
+            // Scroll to bottom
+            setTimeout(() => {
+              const messagesContainer = document.getElementById('messages-container');
+              if (messagesContainer) {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              }
+            }, 100);
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to conversation updates (status changes, etc.)
+    const conversationChannel = supabase
+      .channel(`conversation:${selectedConversation.id}:updates`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${selectedConversation.id}`,
+        },
+        (payload: any) => {
+          console.log('[Chat Page] Conversation updated:', payload.new);
+          setSelectedConversation(prev => prev ? { ...prev, ...payload.new } : null);
+
+          // Update in conversations list
+          setConversations(prev =>
+            prev.map(conv =>
+              conv.id === selectedConversation.id
+                ? { ...conv, ...payload.new }
+                : conv
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions
+    return () => {
+      console.log('[Chat Page] Cleaning up realtime subscriptions');
+      messagesChannel.unsubscribe();
+      conversationChannel.unsubscribe();
+    };
+  }, [selectedConversation?.id]);
+
+  // Subscribe to conversations list updates
+  useEffect(() => {
+    if (!user || !supabase) return;
+
+    console.log('[Chat Page] Setting up conversations list realtime subscription');
+
+    // Subscribe to new conversations
+    const conversationsChannel = supabase
+      .channel('conversations:list')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+        },
+        (payload: any) => {
+          console.log('[Chat Page] New conversation created:', payload.new);
+          fetchConversations(); // Refresh the list
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+        },
+        (payload: any) => {
+          console.log('[Chat Page] Conversation updated in list:', payload.new);
+          fetchConversations(); // Refresh the list
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[Chat Page] Cleaning up conversations list subscription');
+      conversationsChannel.unsubscribe();
+    };
+  }, [user]);
 
   useEffect(() => {
     if (user) {

@@ -13,6 +13,14 @@ export default defineConfig(({ command }) => ({
     emptyOutDir: true,
     minify: 'terser',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+      },
+    },
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(command === 'serve' ? 'development' : 'production'),
   },
   server: {
     port: 3001,
