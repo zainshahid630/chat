@@ -109,8 +109,9 @@ export class ChatWidget {
       if (this.session) {
         this.supabase = createClient(
           'https://pnjbqxfhtfitriyviwid.supabase.co',
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuamJxeGZodGZpdHJpeXZpd2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAzNjI4NzksImV4cCI6MjA0NTkzODg3OX0.Ks_Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8Ks8' // Anon key
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBuamJxeGZodGZpdHJpeXZpd2lkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4OTYxMjQsImV4cCI6MjA3NzQ3MjEyNH0.N9kgEXE23U1YVXCna0vfa-axoA1pYGCeMuMPefEEACY' // Anon key
         );
+        console.log('[ChatDesk] Supabase client initialized for realtime');
       }
 
       // If there's an existing conversation, load it
@@ -886,6 +887,12 @@ export class ChatWidget {
     const container = this.chatWindow?.querySelector('#chatdesk-messages');
     if (!container) return;
 
+    // Ensure messages is an array
+    if (!Array.isArray(this.messages)) {
+      console.error('[ChatDesk] Messages is not an array:', this.messages);
+      this.messages = [];
+    }
+
     if (this.messages.length === 0) {
       container.innerHTML = `
         <div style="text-align: center; padding: 40px 20px; color: #6b7280; font-size: 14px;">
@@ -896,7 +903,8 @@ export class ChatWidget {
     }
 
     container.innerHTML = this.messages.map(msg => {
-      const isCustomer = msg.sender?.role === 'customer';
+      // Check if message is from customer (widget sender) or agent
+      const isCustomer = msg.sender_type === 'customer' || !!msg.widget_sender_id;
       return `
         <div style="
           display: flex;
@@ -907,6 +915,8 @@ export class ChatWidget {
             max-width: 70%;
             padding: 10px 14px;
             border-radius: 12px;
+            word-wrap: break-word;
+            // white-space: pre-wrap;
             ${isCustomer
               ? `background-color: ${this.session!.config.primaryColor}; color: white;`
               : 'background-color: white; color: #111827; border: 1px solid #e5e7eb;'
@@ -1007,7 +1017,7 @@ export class ChatWidget {
           console.log('[ChatDesk] New message received via realtime:', payload.new);
 
           // Only add if not already in messages (avoid duplicates)
-          if (!this.messages.find(m => m.id === payload.new.id)) {
+          if (!Array.isArray(this.messages) || !this.messages.find(m => m.id === payload.new.id)) {
             // Fetch the complete message with sender info
             try {
               const response = await fetch(
@@ -1020,9 +1030,17 @@ export class ChatWidget {
               );
 
               if (response.ok) {
-                const allMessages = await response.json();
-                this.messages = allMessages;
-                this.renderMessages();
+                const data = await response.json();
+                // API returns { messages: [...] }, extract the array
+                const allMessages = data.messages || data;
+                // Ensure we have an array
+                if (Array.isArray(allMessages)) {
+                  this.messages = allMessages;
+                  this.renderMessages();
+                } else {
+                  console.error('[ChatDesk] Invalid messages response:', data);
+                  this.messages = [];
+                }
 
                 // Scroll to bottom
                 setTimeout(() => {
@@ -1065,14 +1083,30 @@ export class ChatWidget {
           if (this.conversation) {
             this.conversation = { ...this.conversation, ...payload.new };
 
-            // Re-render chat view to show updated status/agent
-            this.renderChatView();
+            // Only update the header, don't re-render entire chat view
+            this.updateChatHeader();
 
             this.emit('conversation_updated', payload.new);
           }
         }
       )
       .subscribe();
+  }
+
+  /**
+   * Update chat header with current conversation data
+   */
+  private updateChatHeader() {
+    if (!this.chatWindow || !this.conversation) return;
+
+    const header = this.chatWindow.querySelector('.chatdesk-header');
+    if (!header) return;
+
+    // Update title if agent is assigned
+    const titleElement = header.querySelector('h3');
+    if (titleElement && this.conversation.agent_id) {
+      titleElement.textContent = this.session?.config.widgetTitle || 'Chat with us';
+    }
   }
 
   /**

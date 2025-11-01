@@ -79,12 +79,20 @@ export interface User {
 export interface Message {
   id: string;
   conversation_id: string;
-  sender_id: string;
+  sender_id?: string;
+  widget_sender_id?: string;
+  sender_type: 'agent' | 'customer' | 'system';
   content: string;
   message_type: 'text' | 'image' | 'audio' | 'file' | 'system';
   media_url?: string;
   created_at: string;
   sender?: User;
+  widget_sender?: {
+    id: string;
+    visitor_id: string;
+    email?: string;
+    full_name?: string;
+  };
 }
 
 export interface EventCallbacks {
